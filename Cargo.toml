@@ -5,8 +5,10 @@ version = "0.0.1"
 authors = ["Corey Richardson <corey@octayn.net>"]
 
 [dependencies.postgres]
-
 git = "https://github.com/sfackler/rust-postgres"
+
+[dependencies.alexandria]
+git = "https://github.com/cmr/alexandria-common"
 
 [dependencies.iron]
 git = "https://github.com/iron/iron.git"
@@ -14,3 +16,5 @@ git = "https://github.com/iron/iron.git"
 git = "https://github.com/iron/logger.git"
 [dependencies.router]
 git = "https://github.com/iron/router.git"
+[dependencies.persistent]
+git = "https://github.com/cmr/persistent.git"
