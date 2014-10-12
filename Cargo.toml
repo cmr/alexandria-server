@@ -3,3 +3,7 @@
 name = "alexandria-server"
 version = "0.0.1"
 authors = ["Corey Richardson <corey@octayn.net>"]
+
+[dependencies.postgres]
+
+git = "https://github.com/sfackler/rust-postgres"
