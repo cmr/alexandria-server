@@ -163,7 +163,7 @@ fn get_students(req: &mut Request) -> IronResult<Response> {
 }
 
 //students from request
-fn get_student(req: &mut Request) -> IronResult<Response> {
+fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
@@ -182,7 +182,7 @@ fn get_student(req: &mut Request) -> IronResult<Response> {
 
 
 //update student from request
-fn update_student(req: &mut Request) -> IronResult<Response> {
+fn update_student_by_name(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
@@ -190,7 +190,7 @@ fn update_student(req: &mut Request) -> IronResult<Response> {
             let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,student_id=$3,permission=$4 WHERE student=$5").unwrap();
             match stmt.execute(&[&String::from_str(name),&String::from_str(email),&String::from_str(student_id),&num::from_int(permission)]) {
     					Ok(num) => println!("Update Student! {}", num),
-    					Err(err) => println!("Error executing update_student: {}", err)
+    					Err(err) => println!("Error executing update_student_by_name: {}", err)
 						}
             Response::status(status::NotFound)
         },
@@ -199,7 +199,7 @@ fn update_student(req: &mut Request) -> IronResult<Response> {
 }
 
 //add student from request
-fn add_student(req: &mut Request) -> IronResult<Response> {
+fn add_student_by_name(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
@@ -207,7 +207,7 @@ fn add_student(req: &mut Request) -> IronResult<Response> {
             let stmt = conn.prepare("INSERT INTO users WHERE name=$1").unwrap();
             match stmt.execute(&[&String::from_str(name),&String::from_str(email),&String::from_str(student_id),&num::from_int(permission)]) {
     					Ok(num) => println!("Added Student! {}", num),
-    					Err(err) => println!("Error executing add_student: {}", err)
+    					Err(err) => println!("Error executing add_student_by_name: {}", err)
 						}
             Response::status(status::NotFound)
         },
@@ -216,7 +216,7 @@ fn add_student(req: &mut Request) -> IronResult<Response> {
 }
 
 //delete student from request
-fn delete_student(req: &mut Request) -> IronResult<Response> {
+fn delete_student_by_name(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
@@ -224,7 +224,7 @@ fn delete_student(req: &mut Request) -> IronResult<Response> {
             let stmt = conn.prepare("DELETE from users VALUES (name=$1,email=$2,student_id=$3,permission=$4)").unwrap();
             match stmt.execute(&[&String::from_str(name)]) {
     					Ok(num) => println!("Deleted Student! {}", num),
-    					Err(err) => println!("Error executing delete_student: {}", err)
+    					Err(err) => println!("Error executing delete_student_by_name: {}", err)
 						}
             Response::status(status::NotFound)
         },
@@ -262,6 +262,17 @@ fn main() {
   router.delete("/book", delete_book_by_isbn);
   //update book from isbn
   router.put("/book/:isbn", update_book_by_isbn);
+
+  //get student 
+  router.get("/student", get_student_by_name);
+  //get list of students
+  router.get("/student", get_students);
+  //add student from name
+  router.post("/student", add_student_by_name);
+  //delete students from name
+  router.delete("/student", delete_student_by_name);
+  //update student from name
+  router.put("/student", update_student_by_name);
 
   //manages the request through IRON Middleware web framework
   let mut chain = ChainBuilder::new(router);
