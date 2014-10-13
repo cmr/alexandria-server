@@ -48,17 +48,17 @@ fn book(row: postgres::PostgresRow) -> alexandria::Book {
 }
 
 //list of books from request
-fn book_query(req: &mut Request) -> IronResult<Response> {
+fn get_books(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
         Some(book) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM books WHERE book = $1").unwrap();
+            let stmt = conn.prepare("SELECT * FROM books").unwrap();
             let mut books = Vec::new();
-            for row in stmt.query(&[&String::from_str(book)]).unwrap() {
-                let books = books.push(good(book_from_row(row)));
+            for row in stmt.query([]).unwrap() {
+                let books = books.push(book_from_row(row));
             }
-            		return Ok(&books)
+            		return Ok(good(&books))
             Response::status(status::NotFound)
         },
         None => Response::status(status::BadRequest)
@@ -83,6 +83,56 @@ fn get_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     })
 }
 
+//update book from request
+fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
+        Some(book) => {
+            let conn = conn.lock();
+            let stmt = conn.prepare("UPDATE books SET name=$1,description=$2,isbn=$3,cover_image=$4,available=$5,quantity=$6,active_date=$7,permission=$8 WHERE book=$9").unwrap();
+            match stmt.execute(&[&String::from_str(name),&String::from_str(description),&String::from_str(isbn),&cover_image,&num::from_int(available),&num::from_int(quantity),&active_date,&num::from_int(permission),&book]) {
+    					Ok(num) => println!("Update Book! {}", num),
+    					Err(err) => println!("Error executing update_book_by_isbn: {}", err)
+						}
+            Response::status(status::NotFound)
+        },
+        None => Response::status(status::BadRequest)
+    })
+}
+
+//add book from request
+fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
+        Some(book) => {
+            let conn = conn.lock();
+            let stmt = conn.prepare("INSERT INTO books VALUES (name=$1,description=$2,isbn=$3,cover_image=$4,available=$5,quantity=$6,active_date=$7,permission=$8").unwrap();
+            match stmt.execute(&[&String::from_str(name),&String::from_str(description),&String::from_str(isbn),&cover_image,&num::from_int(available),&num::from_int(quantity),&active_date,&num::from_int(permission)]) {
+    					Ok(num) => println!("Added Book! {}", num),
+    					Err(err) => println!("Error executing add_book_by_isbn: {}", err)
+						}
+            Response::status(status::NotFound)
+        },
+        None => Response::status(status::BadRequest)
+    })
+}
+
+//delete book from request
+fn delete_book_by_isbn(req: &mut Request) -> IronResult<Response> {
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    Ok(match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+        Some(isbn) => {
+            let conn = conn.lock();
+            let stmt = conn.prepare("Delete FROM books WHERE isbn = $1").unwrap();
+            match stmt.execute(&[&String::from_str(isbn)]) {
+    					Ok(num) => println!("Deleted Book! {}", num),
+    					Err(err) => println!("Error executing delete_book_by_isbn: {}", err)
+						}
+            Response::status(status::NotFound)
+        },
+        None => Response::status(status::BadRequest)
+    })
+}
 
 fn main() {
 	//parameters for connection to database
@@ -108,7 +158,7 @@ fn main() {
   //get list of books
   router.get("/book", book_query);
   //add book from isbn
-  router.post("/book/:isbn", add_book_by)
+  router.post("/book/:isbn", add_book_by_isbn);
 
 
   //manages the request through IRON Middleware web framework
