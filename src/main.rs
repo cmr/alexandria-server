@@ -68,8 +68,9 @@ fn get_books(req: &mut Request) -> IronResult<Response> {
             for row in stmt.query([]).unwrap() {
                 let books = books.push(book_from_row(row));
             }
-            		return Ok(good(&books))
-            Response::status(status::NotFound)
+            return Ok(good(&books))
+
+            //Response::status(status::NotFound)
         },
         None => Response::status(status::BadRequest)
     })
@@ -99,8 +100,8 @@ fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
         Some(book) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("UPDATE books SET name=$1,description=$2,isbn=$3,cover_image=$4,available=$5,quantity=$6,active_date=$7,permission=$8 WHERE book=$9").unwrap();
-            match stmt.execute(&[&String::from_str(name),&String::from_str(description),&String::from_str(isbn),&cover_image,&num::from_int(available),&num::from_int(quantity),&active_date,&num::from_int(permission),&book]) {
+            let stmt = conn.prepare("UPDATE books SET book=$1,book=$2,isbn=$3,book=$4,book=$5,book=$6,book=$7,book=$8 WHERE book=$9").unwrap();
+            match stmt.execute(&[&String::from_str(book),&String::from_str(book),&String::from_str(book),&book,&book,&book,&book,&book,&book]) {
     					Ok(num) => println!("Update Book! {}", num),
     					Err(err) => println!("Error executing update_book_by_isbn: {}", err)
 						}
@@ -116,8 +117,8 @@ fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
         Some(book) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("INSERT INTO books VALUES (name=$1,description=$2,isbn=$3,cover_image=$4,available=$5,quantity=$6,active_date=$7,permission=$8").unwrap();
-            match stmt.execute(&[&String::from_str(name),&String::from_str(description),&String::from_str(isbn),&cover_image,&num::from_int(available),&num::from_int(quantity),&active_date,&num::from_int(permission)]) {
+            let stmt = conn.prepare("INSERT INTO books VALUES (book=$1,book=$2,book=$3,book=$4,book=$5,book=$6,book=$7,book=$8").unwrap();
+            match stmt.execute(&[&String::from_str(book),&String::from_str(book),&String::from_str(book),&book,&book,&book,&book,&book]) {
     					Ok(num) => println!("Added Book! {}", num),
     					Err(err) => println!("Error executing add_book_by_isbn: {}", err)
 						}
@@ -155,8 +156,9 @@ fn get_students(req: &mut Request) -> IronResult<Response> {
             for row in stmt.query([]).unwrap() {
                 users.push(student_from_row(row));
             }
-            		return Ok(good(&users))
-            Response::status(status::NotFound)
+            
+            return Ok(good(&users))
+            //Response::status(status::NotFound)
         },
         None => Response::status(status::BadRequest)
     })
@@ -168,8 +170,8 @@ fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM users WHERE name = $1").unwrap();
-            for row in stmt.query(&[&String::from_str(name)]).unwrap() {
+            let stmt = conn.prepare("SELECT * FROM users WHERE student = $1").unwrap();
+            for row in stmt.query(&[&String::from_str(student)]).unwrap() {
                 let student = book_from_row(row);
                 return Ok(good(&student))
             }
@@ -187,8 +189,8 @@ fn update_student_by_name(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,student_id=$3,permission=$4 WHERE student=$5").unwrap();
-            match stmt.execute(&[&String::from_str(name),&String::from_str(email),&String::from_str(student_id),&num::from_int(permission)]) {
+            let stmt = conn.prepare("UPDATE users SET student=$1,student=$2,student=$3,student=$4 WHERE student=$5").unwrap();
+            match stmt.execute(&[&String::from_str(student),&String::from_str(student),&String::from_str(student),&student,&student]) {
     					Ok(num) => println!("Update Student! {}", num),
     					Err(err) => println!("Error executing update_student_by_name: {}", err)
 						}
@@ -204,8 +206,8 @@ fn add_student_by_name(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("INSERT INTO users WHERE name=$1").unwrap();
-            match stmt.execute(&[&String::from_str(name),&String::from_str(email),&String::from_str(student_id),&num::from_int(permission)]) {
+            let stmt = conn.prepare("INSERT INTO users WHERE student=$1").unwrap();
+            match stmt.execute(&[&String::from_str(student),&String::from_str(student),&String::from_str(student),&student]) {
     					Ok(num) => println!("Added Student! {}", num),
     					Err(err) => println!("Error executing add_student_by_name: {}", err)
 						}
@@ -221,8 +223,8 @@ fn delete_student_by_name(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("student") {
         Some(student) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("DELETE from users VALUES (name=$1,email=$2,student_id=$3,permission=$4)").unwrap();
-            match stmt.execute(&[&String::from_str(name)]) {
+            let stmt = conn.prepare("DELETE from users WHERE student=$1").unwrap();
+            match stmt.execute(&[&String::from_str(student)]) {
     					Ok(num) => println!("Deleted Student! {}", num),
     					Err(err) => println!("Error executing delete_student_by_name: {}", err)
 						}
@@ -233,6 +235,7 @@ fn delete_student_by_name(req: &mut Request) -> IronResult<Response> {
 }
 
 fn main() {
+	/*
 	//parameters for connection to database
 	let params = PostgresConnectParams {
   	target: TargetUnix(some_crazy_path),//target server
@@ -243,7 +246,7 @@ fn main() {
   	}),
   	database: None,											//database to connect to
   	options: vec![],										//runtime parameters
-	};
+	};*/
 
 	//make sure params is correct
 	//into_connect_params(params);

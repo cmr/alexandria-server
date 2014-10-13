@@ -20,5 +20,6 @@ CREATE TABLE history (
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR NOT NULL,
-    student_id VARCHAR NOT NULL
+    student_id VARCHAR NOT NULL,
+    permission SMALLINA NOT NULLT
 );
