@@ -22,6 +22,7 @@ struct APIResult<T> {
     data: T
 }
 
+//get the json form a good request
 fn good<'a, T: serialize::Encodable<json::Encoder<'a>, std::io::IoError>>(val: &T) -> Response {
     use iron::headers::content_type::MediaType;
 
@@ -42,16 +43,29 @@ fn book(row: postgres::PostgresRow) -> alexandria::Book {
         available: row.get("available"),			//checkout state
         quantity: row.get("quantity"),				//quantity of book in library
         active_date: row.get("active_date"),	//time of most recent operation
-        permission: alexandria::enum_from_id(row.get("permission")).unwrap() //permission
+        permission: alexandria::enum_from_id(row.get("permission")).unwrap() //permission status
     }
 }
 
-
+//list of books from request
 fn book_query(req: &mut Request) -> IronResult<Response> {
-    // do something with the query string...
-    Ok(Response::status(status::NotImplemented))
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
+        Some(book) => {
+            let conn = conn.lock();
+            let stmt = conn.prepare("SELECT * FROM books WHERE book = $1").unwrap();
+            let mut books = Vec::new();
+            for row in stmt.query(&[&String::from_str(book)]).unwrap() {
+                let books = books.push(good(book_from_row(row)));
+            }
+            		return Ok(&books)
+            Response::status(status::NotFound)
+        },
+        None => Response::status(status::BadRequest)
+    })
 }
 
+//a book from request
 fn get_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
@@ -96,8 +110,11 @@ fn main() {
   //add book from isbn
   router.post("/book/:isbn", add_book_by)
 
+
+  //manages the request through IRON Middleware web framework
   let mut chain = ChainBuilder::new(router);
   chain.link_before(Write::<DBConn, PostgresConnection>::one(conn));
 
+  //kick off teh server process
   Iron::new(chain).listen(Ipv4Addr(127, 0, 0, 1), 13699);
 }
