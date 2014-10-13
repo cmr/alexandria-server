@@ -6,9 +6,18 @@ authors = ["Corey Richardson <corey@octayn.net>"]
 
 [dependencies.postgres]
 git = "https://github.com/sfackler/rust-postgres"
+<<<<<<< HEAD
+=======
+
+[dependencies.alexandria]
+git = "https://github.com/cmr/alexandria-common"
+
+>>>>>>> 791a307653166eaf527b4055d387f284a99d087a
 [dependencies.iron]
 git = "https://github.com/iron/iron.git"
 [dependencies.logger]
 git = "https://github.com/iron/logger.git"
 [dependencies.router]
 git = "https://github.com/iron/router.git"
+[dependencies.persistent]
+git = "https://github.com/cmr/persistent.git"
