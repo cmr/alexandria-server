@@ -37,7 +37,7 @@ fn good<'a, T: serialize::Encodable<json::Encoder<'a>, std::io::IoError>>(val: &
     res
 }
 
-//Is book from the postgres
+//Is book from the postgress
 fn book_from_row(row: postgres::PostgresRow) -> alexandria::Book {
     alexandria::Book {
         name: row.get("name"),								//name of book
@@ -51,7 +51,7 @@ fn book_from_row(row: postgres::PostgresRow) -> alexandria::Book {
     }
 }
 
-//Is student form postgres
+//Is student form postgress
 fn student_from_row(row: postgres::PostgresRow) -> alexandria::User {
 	alexandria::User{
 		name: row.get("name"),			//name of student
@@ -59,6 +59,16 @@ fn student_from_row(row: postgres::PostgresRow) -> alexandria::User {
 		student_id: row.get("id"),	//id of student
 		permission: alexandria::enum_from_id(row.get("permission")).unwrap() //permissions status
 	}
+}
+
+//Is history form postgress
+fn history_from_row(row: postgres::PostgresRow) -> alexandria::History {
+    alexandria::History{
+        isbn: row.get("isbn"),          //isbn of history
+        student_id: row.get("student_id"),        //student_id of history
+        date: row.get("date"),  //date of history
+        action: alexandria::enum_from_id(row.get("action")).unwrap() //checkstatus
+    }
 }
 
 //list of books from request
@@ -75,7 +85,7 @@ fn get_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
         Some(isbn) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM books WHERE isbn=$2").unwrap();
+            let stmt = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
             for row in stmt.query(&[&String::from_str(isbn)]).unwrap() {
                 let book = book_from_row(row);
                 return Ok(good(&book))
@@ -184,7 +194,6 @@ fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
     })
 }
 
-
 //update student from request
 fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
@@ -249,6 +258,83 @@ fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
     Ok(Response::status(status::NotFound))
 }
 
+//get checkoutstatus of a book
+fn checkout(req: &mut Request) -> IronResult<Response> {
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let parsed = req.get::<BodyParser<alexandria::ActionRequest>>().unwrap();
+    let action;
+    let conn = conn.lock();
+    let stmt1 = conn.prepare("SELECT * FROM history WHERE isbn=$1 AND student_id=$2 AND action=$3 ORDER BY date DESC").unwrap();
+    action = history_from_row(stmt1.query(&[&parsed.isbn,&parsed.student_id,&(parsed.action as i16)]).unwrap().next().unwrap());
+    if (parsed.isbn == action.isbn) && ((parsed.action as i16) == (action.action as i16)) && (parsed.student_id == action.student_id) {
+        let stmt2 = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
+        for row in stmt2.query(&[&parsed.isbn]).unwrap() {
+            let book = book_from_row(row);
+            if (book.available > 0) && (book.quantity >= book.available) && (book.isbn == parsed.isbn) {
+                let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
+                match stmt3.execute(&[&(book.available-1)]) {
+                    Ok(num) => println!("Update Checkout! {}", num),
+                    Err(err) => {
+                        println!("Error executing checkout: {}", err);
+                        return Ok(Response::status(status::InternalServerError));
+                    }
+                }
+            }
+        }
+    }
+    Ok(Response::status(status::NotFound))
+}
+
+//get checkinstatus of a book
+fn checkin(req: &mut Request) -> IronResult<Response> {
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let parsed = req.get::<BodyParser<alexandria::ActionRequest>>().unwrap();
+    let action;
+    let conn = conn.lock();
+    let stmt1 = conn.prepare("SELECT * FROM history WHERE isbn=$1 AND student_id=$2 AND action=$3 ORDER BY date DESC").unwrap();
+    action = history_from_row(stmt1.query(&[&parsed.isbn,&parsed.student_id,&(parsed.action as i16)]).unwrap().next().unwrap());
+    if (parsed.isbn == action.isbn) && ((parsed.action as i16) == (action.action as i16)) && (parsed.student_id == action.student_id) {
+        let stmt2 = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
+        for row in stmt2.query(&[&parsed.isbn]).unwrap() {
+            let book = book_from_row(row);
+            if (book.available >= 0) && (book.quantity > book.available) && (book.isbn == parsed.isbn) {
+                let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
+                match stmt3.execute(&[&(book.available-1)]) {
+                    Ok(num) => println!("Update Checkout! {}", num),
+                    Err(err) => {
+                        println!("Error executing checkout: {}", err);
+                        return Ok(Response::status(status::InternalServerError));
+                    }
+                }
+            }
+        }
+    }
+    Ok(Response::status(status::NotFound))
+}
+/*
+
+//history
+fn history(req: &mut Request) -> IronResult<Response> {
+    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let student_id;
+    match req.extensions.find::<Router, Params>().unwrap().find("id") {
+        Some(student_id_) => {
+            student_id = student_id_.to_string();
+        },
+        None => return Ok(Response::status(status::BadRequest))
+    }
+    let conn = conn.lock();
+    let stmt = conn.prepare("DELETE from users WHERE student_id=$1").unwrap();
+    match stmt.execute(&[&student_id]) {
+        Ok(num) => println!("Deleted Student! {}", num),
+        Err(err) => {
+            println!("Error executing delete_student_by_name: {}", err);
+            return Ok(Response::status(status::InternalServerError));
+        }
+    }
+    Ok(Response::status(status::NotFound))
+}
+*/
 fn main() {
 	/*
 	//parameters for connection to database
@@ -295,6 +381,15 @@ fn main() {
   //update student from id
   router.put("/student/:id", update_student_by_id);
 
+
+  //checkout
+  router.get("/checkout", checkout);
+  //checkin
+  router.get("/checkin", checkin);
+
+  //history
+  //router.get("/history", history);
+
   let (logger_before, logger_after) = Logger::new(None);
   //manages the request through IRON Middleware web framework
   let mut chain = ChainBuilder::new(router);
@@ -303,7 +398,6 @@ fn main() {
 
   // this must be last
   chain.link_after(logger_after);
-
-  //kick off teh server process
+  //kick off the server process
   Iron::new(chain).listen(Ipv4Addr(127, 0, 0, 1), 13699);
 }
