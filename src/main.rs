@@ -363,9 +363,9 @@ fn main() {
   //get book from the isbn
   router.get("/book/:isbn", get_book_by_isbn);
   //update book from isbn
-  router.put("/book/:isbn", update_book_by_isbn);
+  router.post("/book/:isbn", update_book_by_isbn);
   //add book from isbn
-  router.post("/book", add_book);
+  router.put("/book", add_book);
   //delete book from isbn
   router.delete("/book/:isbn", delete_book_by_isbn);
 
@@ -373,19 +373,19 @@ fn main() {
   //get list of students
   router.get("/student", get_students);
   //add student from name
-  router.post("/student", add_student);
+  router.put("/student", add_student);
   //get student
   router.get("/student/:id", get_student_by_name);
   //delete students from id
   router.delete("/student/:id", delete_student_by_id);
   //update student from id
-  router.put("/student/:id", update_student_by_id);
+  router.post("/student/:id", update_student_by_id);
 
 
   //checkout
-  router.get("/checkout", checkout);
+  router.post("/checkout", checkout);
   //checkin
-  router.get("/checkin", checkin);
+  router.post("/checkin", checkin);
 
   //history
   //router.get("/history", history);
