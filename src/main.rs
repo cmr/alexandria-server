@@ -5,6 +5,7 @@ extern crate postgres;
 extern crate router;
 extern crate serialize;
 extern crate bodyparser;
+extern crate logger;
 
 use std::io::net::ip::Ipv4Addr;
 use serialize::json;
@@ -14,6 +15,7 @@ use persistent::{Write};
 use postgres::{PostgresConnection, NoSsl};
 use router::{Router, Params};
 use bodyparser::BodyParser;
+use logger::Logger;
 
 struct DBConn;
 impl typemap::Assoc<PostgresConnection> for DBConn { }
@@ -312,9 +314,14 @@ fn main() {
   //update student from name
   router.put("/student:name", update_student_by_name);
 
+  let (logger_before, logger_after) = Logger::new(None);
   //manages the request through IRON Middleware web framework
   let mut chain = ChainBuilder::new(router);
+  chain.link_before(logger_before);
   chain.link_before(Write::<DBConn, PostgresConnection>::one(conn));
+
+  // this must be last
+  chain.link_after(logger_after);
 
   //kick off teh server process
   Iron::new(chain).listen(Ipv4Addr(127, 0, 0, 1), 13699);
