@@ -10,6 +10,8 @@ extern crate logger;
 extern crate hyper;
 extern crate url;
 extern crate time;
+extern crate mount;
+extern crate static_file;
 #[phase(plugin)] extern crate lazy_static;
 
 use std::io::net::ip::Ipv4Addr;
@@ -21,6 +23,8 @@ use postgres::{PostgresConnection, NoSsl};
 use router::{Router, Params};
 use bodyparser::BodyParser;
 use logger::Logger;
+use mount::Mount;
+use static_file::Static;
 
 lazy_static! {
     static ref APIKEY: String = {
@@ -462,9 +466,16 @@ fn main() {
   //history
   //router.get("/history", history);
 
-  let (logger_before, logger_after) = Logger::new(None);
   //manages the request through IRON Middleware web framework
-  let mut chain = ChainBuilder::new(router);
+
+  let mut mount = Mount::new();
+  mount.mount("/", Static::new(Path::new("../web-client/jquery/index.html")));
+  mount.mount("/api", router);
+  mount.mount("/static/", Static::new(Path::new("../web-client/jquery/static/")));
+
+  let mut chain = ChainBuilder::new(mount);
+
+  let (logger_before, logger_after) = Logger::new(None);
   chain.link_before(logger_before);
   chain.link_before(Write::<DBConn, PostgresConnection>::one(conn));
 

@@ -16,6 +16,10 @@ git = "https://github.com/cmr/logger.git"
 git = "https://github.com/iron/router.git"
 [dependencies.persistent]
 git = "https://github.com/iron/persistent.git"
+[dependencies.mount]
+git = "https://github.com/iron/mount.git"
+[dependencies.static_file]
+git = "https://github.com/iron/static-file.git"
 [dependencies.bodyparser]
 git = "https://github.com/whodidthis/body-parser.git"
 
