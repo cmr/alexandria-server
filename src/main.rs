@@ -64,20 +64,9 @@ fn student_from_row(row: postgres::PostgresRow) -> alexandria::User {
 //list of books from request
 fn get_books(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    Ok(match req.extensions.find::<Router, Params>().unwrap().find("book") {
-        Some(book) => {
-            let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM books").unwrap();
-            let mut books = Vec::new();
-            for row in stmt.query([]).unwrap() {
-                let books = books.push(book_from_row(row));
-            }
-            return Ok(good(&books))
-
-            //Response::status(status::NotFound)
-        },
-        None => Response::status(status::BadRequest)
-    })
+    let conn = conn.lock();
+    let stmt = conn.prepare("SELECT * FROM books").unwrap();
+    return Ok(good(&stmt.query([]).unwrap().map(|row| book_from_row(row)).collect::<Vec<_>>()))
 }
 
 //a book from request
@@ -125,15 +114,6 @@ fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
 //add book from request
 fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    let book;
-    {
-        match req.extensions.find::<Router, Params>().unwrap().find("book") {
-            Some(book_) => {
-                book = book_.to_string();
-            },
-            None => return Ok(Response::status(status::BadRequest))
-        }
-    }
     let conn = conn.lock();
     let stmt = conn.prepare("INSERT INTO books (name,description,isbn,cover_image,available,quantity,active_date,permission) VALUES ($1,$2,$3,$4,$5,$6,$7,$8").unwrap();
     let parsed = req.get::<BodyParser<alexandria::Book>>().unwrap();
@@ -141,7 +121,10 @@ fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
        &parsed.cover_image,&parsed.available,&parsed.quantity,&parsed.active_date,
        &(parsed.permission as i16)]) {
         Ok(num) => println!("Added Book! {}", num),
-        Err(err) => println!("Error executing add_book_by_isbn: {}", err)
+        Err(err) => {
+            println!("Error executing add_book_by_isbn: {}", err);
+            return Ok(Response::status(status::InternalServerError));
+        }
     }
     Ok(Response::status(status::NotFound))
 }
@@ -149,21 +132,23 @@ fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
 //delete book from request
 fn delete_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    let book;
+    let isbn;
     {
-        match req.extensions.find::<Router, Params>().unwrap().find("book") {
-            Some(book_) => {
-                book = book_.to_string();
+        match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+            Some(isbn_) => {
+                isbn = isbn_.to_string();
             },
             None => return Ok(Response::status(status::BadRequest))
         }
     }
     let conn = conn.lock();
-    let stmt = conn.prepare("DELETE FROM books WHERE isbn=$1 OR name=$2").unwrap();
-    let parsed = req.get::<BodyParser<alexandria::Book>>().unwrap();
-    match stmt.execute(&[&parsed.isbn,&parsed.name]) {
+    let stmt = conn.prepare("DELETE FROM books WHERE isbn=$1").unwrap();
+    match stmt.execute(&[&isbn]) {
         Ok(num) => println!("Deleted Book! {}", num),
-        Err(err) => println!("Error executing delete_book_by_isbn: {}", err)
+        Err(err) => {
+            println!("Error executing delete_book_by_isbn: {}", err);
+            return Ok(Response::status(status::InternalServerError));
+        }
     }
     Ok(Response::status(status::NotFound))
 }
@@ -171,20 +156,14 @@ fn delete_book_by_isbn(req: &mut Request) -> IronResult<Response> {
 //list of students from request
 fn get_students(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    Ok(match req.extensions.find::<Router, Params>().unwrap().find("User") {
-        Some(User) => {
-            let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM users").unwrap();
-            let mut users = Vec::new();
-            for row in stmt.query([]).unwrap() {
-                users.push(student_from_row(row));
-            }
-            
-            return Ok(good(&users))
-            //Response::status(status::NotFound)
-        },
-        None => Response::status(status::BadRequest)
-    })
+    let conn = conn.lock();
+    let stmt = conn.prepare("SELECT * FROM users").unwrap();
+    let mut users = Vec::new();
+    for row in stmt.query([]).unwrap() {
+        users.push(student_from_row(row));
+    }
+
+    return Ok(good(&users))
 }
 
 //students from request
@@ -193,7 +172,7 @@ fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
     Ok(match req.extensions.find::<Router, Params>().unwrap().find("user"){
         Some(user) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM users WHERE user=$1").unwrap();
+            let stmt = conn.prepare("SELECT * FROM users WHERE student_id=$1").unwrap();
             for row in stmt.query(&[&String::from_str(user)]).unwrap() {
                 let student = book_from_row(row);
                 return Ok(good(&student))
@@ -207,65 +186,65 @@ fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
 
 
 //update student from request
-fn update_student_by_name(req: &mut Request) -> IronResult<Response> {
+fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    let student;
+    let student_id;
     {
-        match req.extensions.find::<Router, Params>().unwrap().find("student") {
-            Some(student_) => {
-                student = student_.to_string();
+        match req.extensions.find::<Router, Params>().unwrap().find("id") {
+            Some(student_id_) => {
+                student_id = student_id_.to_string();
             },
             None => return Ok(Response::status(status::BadRequest))
         }
     }
     let conn = conn.lock();
-    let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,student_id=$3,permission=$4 WHERE name=$1").unwrap();
+    let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,permission=$4 WHERE student_id=$1").unwrap();
     let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
-    match stmt.execute(&[&parsed.name,&parsed.email,&parsed.student_id,&(parsed.permission as i16)]) {
+    match stmt.execute(&[&student_id,&parsed.name,&parsed.email,&(parsed.permission as i16)]) {
         Ok(num) => println!("Update Student! {}", num),
-        Err(err) => println!("Error executing update_student_by_name: {}", err)
+        Err(err) => {
+            println!("Error executing update_student_by_name: {}", err);
+            return Ok(Response::status(status::InternalServerError));
+        }
     }
     Ok(Response::status(status::NotFound))
 }
 
 //add student from request
-fn add_student_by_name(req: &mut Request) -> IronResult<Response> {
+fn add_student(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    let student;
-    {
-        match req.extensions.find::<Router, Params>().unwrap().find("student") {
-            Some(student_) => {
-                student = student_.to_string();    
-            },
-            None => return Ok(Response::status(status::BadRequest))
-        }
-    }
     let conn = conn.lock();
-    let stmt = conn.prepare("INSERT INTO users (name,email,student_id,permission) WHERE ($1,$2,$3,$4)").unwrap();
+    // TODO: Handle user already exists!
+    let stmt = conn.prepare("INSERT INTO users (name,email,student_id,permission) VALUES ($1,$2,$3,$4)").unwrap();
     let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
     match stmt.execute(&[&parsed.name,&parsed.email,&parsed.student_id,&(parsed.permission as i16)]) {
         Ok(num) => println!("Added Student! {}", num),
-        Err(err) => println!("Error executing add_student_by_name: {}", err)
+        Err(err) => {
+            println!("Error executing add_student: {}", err);
+            return Ok(Response::status(status::InternalServerError));
+        }
     }
     Ok(Response::status(status::NotFound))
 }
 
 //delete student from request
-fn delete_student_by_name(req: &mut Request) -> IronResult<Response> {
+fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    let student;
-    match req.extensions.find::<Router, Params>().unwrap().find("student") {
-        Some(student_) => {
-            student = student_.to_string();
+    let student_id;
+    match req.extensions.find::<Router, Params>().unwrap().find("id") {
+        Some(student_id_) => {
+            student_id = student_id_.to_string();
         },
         None => return Ok(Response::status(status::BadRequest))
     }
     let conn = conn.lock();
     let stmt = conn.prepare("DELETE from users WHERE student_id=$1").unwrap();
-    let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
-    match stmt.execute(&[&parsed.student_id]) {
+    match stmt.execute(&[&student_id]) {
         Ok(num) => println!("Deleted Student! {}", num),
-        Err(err) => println!("Error executing delete_student_by_name: {}", err)
+        Err(err) => {
+            println!("Error executing delete_student_by_name: {}", err);
+            return Ok(Response::status(status::InternalServerError));
+        }
     }
     Ok(Response::status(status::NotFound))
 }
@@ -291,28 +270,30 @@ fn main() {
 
   let mut router = Router::new();
 
-  //get book from the isbn
-  router.get("/book/:isbn", get_book_by_isbn);
+  // TODO: paginate all of these
+
   //get list of books
   router.get("/book", get_books);
+  //get book from the isbn
+  router.get("/book/:isbn", get_book_by_isbn);
   //update book from isbn
   router.put("/book/:isbn", update_book_by_isbn);
   //add book from isbn
   router.post("/book/:isbn", add_book_by_isbn);
   //delete book from isbn
   router.delete("/book", delete_book_by_isbn);
-  
 
-  //get student 
-  router.get("/student:name", get_student_by_name);
+
   //get list of students
   router.get("/student", get_students);
   //add student from name
-  router.post("/student:name", add_student_by_name);
-  //delete students from name
-  router.delete("/student:name", delete_student_by_name);
-  //update student from name
-  router.put("/student:name", update_student_by_name);
+  router.post("/student", add_student);
+  //get student
+  router.get("/student/:id", get_student_by_name);
+  //delete students from id
+  router.delete("/student/:id", delete_student_by_id);
+  //update student from id
+  router.put("/student/:id", update_student_by_id);
 
   let (logger_before, logger_after) = Logger::new(None);
   //manages the request through IRON Middleware web framework
