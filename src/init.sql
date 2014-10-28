@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS books CASCADE;
 CREATE TABLE books (
     id SERIAL PRIMARY KEY,
     name VARCHAR NOT NULL,
@@ -7,9 +8,10 @@ CREATE TABLE books (
     available SMALLINT NOT NULL,
     quantity SMALLINT NOT NULL,
     active_date TIMESTAMP NOT NULL,
-    permission SMALLINA NOT NULLT
+    permission SMALLINT NOT NULL
 );
 
+DROP TABLE IF EXISTS history CASCADE;
 CREATE TABLE history (
     id SERIAL PRIMARY KEY,
     book INTEGER REFERENCES books (id),
@@ -17,9 +19,10 @@ CREATE TABLE history (
     action SMALLINT
 );
 
+DROP TABLE IF EXISTS users CASCADE;
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR NOT NULL,
     student_id VARCHAR NOT NULL,
-    permission SMALLINA NOT NULLT
+    permission SMALLINT NOT NULL
 );
