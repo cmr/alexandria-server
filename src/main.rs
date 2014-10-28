@@ -469,9 +469,9 @@ fn main() {
   //manages the request through IRON Middleware web framework
 
   let mut mount = Mount::new();
-  mount.mount("/", Static::new(Path::new("../web-client/jquery/index.html")));
+  mount.mount("/", Static::new(Path::new("../alexandria-web-client/jquery/index.html")));
   mount.mount("/api", router);
-  mount.mount("/static/", Static::new(Path::new("../web-client/jquery/static/")));
+  mount.mount("/static/", Static::new(Path::new("../alexandria-web-client/jquery/static/")));
 
   let mut chain = ChainBuilder::new(mount);
 
@@ -482,5 +482,5 @@ fn main() {
   // this must be last
   chain.link_after(logger_after);
   //kick off the server process
-  Iron::new(chain).listen(Ipv4Addr(127, 0, 0, 1), 13699);
+  Iron::new(chain).listen(Ipv4Addr(0, 0, 0, 0), 13699);
 }
