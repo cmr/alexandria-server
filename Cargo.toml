@@ -18,3 +18,11 @@ git = "https://github.com/iron/router.git"
 git = "https://github.com/iron/persistent.git"
 [dependencies.bodyparser]
 git = "https://github.com/whodidthis/body-parser.git"
+
+[dependencies.hyper]
+git = "https://github.com/hyperium/hyper"
+[dependencies.url]
+git = "https://github.com/servo/rust-url"
+
+[dependencies.lazy_static]
+git = "https://github.com/Kimundi/lazy-static.rs"

@@ -1,3 +1,4 @@
+#![feature(phase)]
 extern crate alexandria;
 extern crate iron;
 extern crate persistent;
@@ -6,6 +7,10 @@ extern crate router;
 extern crate serialize;
 extern crate bodyparser;
 extern crate logger;
+extern crate hyper;
+extern crate url;
+extern crate time;
+#[phase(plugin)] extern crate lazy_static;
 
 use std::io::net::ip::Ipv4Addr;
 use serialize::json;
@@ -16,6 +21,12 @@ use postgres::{PostgresConnection, NoSsl};
 use router::{Router, Params};
 use bodyparser::BodyParser;
 use logger::Logger;
+
+lazy_static! {
+    static ref APIKEY: String = {
+        std::os::getenv("GOOGLE_APIKEY").expect("Invalid API key!")
+    };
+}
 
 struct DBConn;
 impl typemap::Assoc<PostgresConnection> for DBConn { }
@@ -35,6 +46,53 @@ fn good<'a, T: serialize::Encodable<json::Encoder<'a>, std::io::IoError>>(val: &
     res.headers.content_type =
         Some(MediaType::new("application".to_string(), "json".to_string(), Vec::new()));
     res
+}
+
+fn verify_isbn(isbn: &str) -> bool {
+    true
+}
+
+fn fetch_isbn(isbn: &str) -> Option<alexandria::Book> {
+    use hyper::client::Request;
+    use url::Url;
+
+    let url = Url::parse(format!("https://www.googleapis.com/books/v1/volumes?q=isbn:{}&key={}",
+                                 isbn, APIKEY.deref()).as_slice()).unwrap();
+    let data = Request::get(url).unwrap();
+    let str = data.start().unwrap().send().unwrap().read_to_end().unwrap();
+    let str = std::str::from_utf8(str.as_slice()).unwrap();
+    println!("Got string: {}", str);
+    let resp = match json::from_str(str) {
+        Ok(json) => json,
+        Err(e) => {
+            println!("Error decoding JSON: {}", e);
+            return None;
+        },
+    };
+
+    // now for some pain!
+    let avail = resp.find(&"totalItems".to_string()).expect("no totalItems").as_u64().expect("totalItems not a u64");
+    if avail == 0 {
+        return None;
+    } else if avail > 1 {
+        println!("Google API returned multiple items for a single ISBN {}? Please report a bug!", isbn);
+    }
+    let item = &resp.find(&"items".to_string()).expect("no items").as_list().expect("items not a list")[0];
+    // time to pull out all the data we care about
+
+    Some(alexandria::Book {
+    name: item.find_path(&[&"volumeInfo".to_string(), &"title".to_string()]).unwrap().as_string().unwrap().to_string(),
+    description: item.find_path(&[&"volumeInfo".to_string(), &"description".to_string()]).unwrap().as_string().unwrap().to_string(),
+    isbn: isbn.to_string(),
+    cover_image: match item.find_path(&[&"volumeInfo".to_string(), &"imageLinks".to_string(), &"thumbnail".to_string()]) {
+        Some(url) => url.as_string().unwrap().to_string(),
+        None => String::new()
+    },
+    available: 0,
+    quantity: 0,
+    active_date: time::Timespec::new(0, 0),
+    permission: alexandria::DontLeaveLibrary
+    })
 }
 
 //Is book from the postgress
@@ -110,7 +168,7 @@ fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
         }
     }
     let conn = conn.lock();
-    let stmt = conn.prepare("UPDATE books SET name=$1,description=$2,isbn=$3,cover_image=$4,available=$5,quantity=$6,active_date=$7,permission=$8 WHERE isbn=$9").unwrap();
+    let stmt = conn.prepare("UPDATE books SET name=$1,description=$2,isbn=$3,cover_image=$4,available=$5,quantity=$6,active_date=$7,permission=$8) WHERE isbn=$9").unwrap();
     let parsed = req.get::<BodyParser<alexandria::Book>>().unwrap();
     match stmt.execute(&[&parsed.name,&parsed.description,&parsed.isbn,
        &parsed.cover_image,&parsed.available,&parsed.quantity,&parsed.active_date,
@@ -121,12 +179,26 @@ fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
     Ok(Response::status(status::NotFound))
 }
 
-//add book from request
 fn add_book(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let isbn;
+    {
+        match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+            Some(isbn_) => {
+                isbn = isbn_.to_string();
+            },
+            None => return Ok(Response::status(status::BadRequest))
+        }
+    }
+
+    if verify_isbn(isbn.as_slice()) == false {
+        return Ok(Response::status(status::BadRequest))
+    }
+
+    let book = fetch_isbn(isbn.as_slice()).unwrap();
     let conn = conn.lock();
-    let stmt = conn.prepare("INSERT INTO books (name,description,isbn,cover_image,available,quantity,active_date,permission) VALUES ($1,$2,$3,$4,$5,$6,$7,$8").unwrap();
-    let parsed = req.get::<BodyParser<alexandria::Book>>().unwrap();
+    let stmt = conn.prepare("INSERT INTO books (name,description,isbn,cover_image,available,quantity,active_date,permission) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)").unwrap();
+    let parsed = book;
     match stmt.execute(&[&parsed.name,&parsed.description,&parsed.isbn,
        &parsed.cover_image,&parsed.available,&parsed.quantity,&parsed.active_date,
        &(parsed.permission as i16)]) {
@@ -136,7 +208,7 @@ fn add_book(req: &mut Request) -> IronResult<Response> {
             return Ok(Response::status(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(Response::status(status::Ok))
 }
 
 //delete book from request
@@ -365,7 +437,7 @@ fn main() {
   //update book from isbn
   router.post("/book/:isbn", update_book_by_isbn);
   //add book from isbn
-  router.put("/book", add_book);
+  router.put("/book/:isbn", add_book);
   //delete book from isbn
   router.delete("/book/:isbn", delete_book_by_isbn);
 

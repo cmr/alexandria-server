@@ -4,7 +4,7 @@ CREATE TABLE books (
     name VARCHAR NOT NULL,
     description VARCHAR NOT NULL,
     isbn VARCHAR UNIQUE NOT NULL,
-    cover_image BYTEA NOT NULL,
+    cover_image VARCHAR NOT NULL,
     available SMALLINT NOT NULL,
     quantity SMALLINT NOT NULL,
     active_date TIMESTAMP NOT NULL,
