@@ -112,7 +112,7 @@ fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
 }
 
 //add book from request
-fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
+fn add_book(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
     let conn = conn.lock();
     let stmt = conn.prepare("INSERT INTO books (name,description,isbn,cover_image,available,quantity,active_date,permission) VALUES ($1,$2,$3,$4,$5,$6,$7,$8").unwrap();
@@ -122,7 +122,7 @@ fn add_book_by_isbn(req: &mut Request) -> IronResult<Response> {
        &(parsed.permission as i16)]) {
         Ok(num) => println!("Added Book! {}", num),
         Err(err) => {
-            println!("Error executing add_book_by_isbn: {}", err);
+            println!("Error executing add_book: {}", err);
             return Ok(Response::status(status::InternalServerError));
         }
     }
@@ -279,9 +279,9 @@ fn main() {
   //update book from isbn
   router.put("/book/:isbn", update_book_by_isbn);
   //add book from isbn
-  router.post("/book/:isbn", add_book_by_isbn);
+  router.post("/book", add_book);
   //delete book from isbn
-  router.delete("/book", delete_book_by_isbn);
+  router.delete("/book/:isbn", delete_book_by_isbn);
 
 
   //get list of students
