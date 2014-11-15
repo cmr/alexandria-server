@@ -11,15 +11,15 @@ extern crate hyper;
 extern crate url;
 extern crate time;
 extern crate mount;
-extern crate static_file;
+extern crate "static" as static_file;
 #[phase(plugin)] extern crate lazy_static;
 
 use std::io::net::ip::Ipv4Addr;
 use serialize::json;
 
-use iron::{ChainBuilder, Chain, Iron, status, Request, Response, IronResult, Plugin, typemap};
+use iron::{ChainBuilder, Chain, Iron, status, Request, Response, IronResult, Plugin, Set, typemap};
 use persistent::{Write};
-use postgres::{PostgresConnection, NoSsl};
+use postgres::{Connection, NoSsl};
 use router::{Router, Params};
 use bodyparser::BodyParser;
 use logger::Logger;
@@ -33,7 +33,7 @@ lazy_static! {
 }
 
 struct DBConn;
-impl typemap::Assoc<PostgresConnection> for DBConn { }
+impl typemap::Assoc<Connection> for DBConn { }
 
 #[deriving(Encodable)]
 struct APIResult<T> {
@@ -41,18 +41,30 @@ struct APIResult<T> {
     data: T
 }
 
+fn resp<B: iron::response::modifiers::Bodyable>(st: iron::status::Status, b: B) -> Response {
+    Response::new()
+        .set(iron::response::modifiers::Status(st))
+        .set(iron::response::modifiers::Body(b))
+}
+
+fn stat(st: iron::status::Status) -> Response {
+    Response::new()
+        .set(iron::response::modifiers::Status(st))
+}
+
+
 //get the json form a good request
 fn good<'a, T: serialize::Encodable<json::Encoder<'a>, std::io::IoError>>(val: &T) -> Response {
     use iron::headers::content_type::MediaType;
 
     let json = json::encode(&APIResult { success: true, data: val });
-    let mut res = Response::with(status::Ok, json);
+    let mut res = resp(status::Ok, json);
     res.headers.content_type =
         Some(MediaType::new("application".to_string(), "json".to_string(), Vec::new()));
     res
 }
 
-fn verify_isbn(isbn: &str) -> bool {
+fn verify_isbn(_isbn: &str) -> bool {
     true
 }
 
@@ -75,20 +87,20 @@ fn fetch_isbn(isbn: &str) -> Option<alexandria::Book> {
     };
 
     // now for some pain!
-    let avail = resp.find(&"totalItems".to_string()).expect("no totalItems").as_u64().expect("totalItems not a u64");
+    let avail = resp.find("totalItems").expect("no totalItems").as_u64().expect("totalItems not a u64");
     if avail == 0 {
         return None;
     } else if avail > 1 {
         println!("Google API returned multiple items for a single ISBN {}? Please report a bug!", isbn);
     }
-    let item = &resp.find(&"items".to_string()).expect("no items").as_list().expect("items not a list")[0];
+    let item = &resp.find("items").expect("no items").as_list().expect("items not a list")[0];
     // time to pull out all the data we care about
 
     Some(alexandria::Book {
-    name: item.find_path(&[&"volumeInfo".to_string(), &"title".to_string()]).unwrap().as_string().unwrap().to_string(),
-    description: item.find_path(&[&"volumeInfo".to_string(), &"description".to_string()]).unwrap().as_string().unwrap().to_string(),
+    name: item.find_path(&["volumeInfo", "title"]).unwrap().as_string().unwrap().to_string(),
+    description: item.find_path(&["volumeInfo", "description"]).unwrap().as_string().unwrap().to_string(),
     isbn: isbn.to_string(),
-    cover_image: match item.find_path(&[&"volumeInfo".to_string(), &"imageLinks".to_string(), &"thumbnail".to_string()]) {
+    cover_image: match item.find_path(&["volumeInfo", "imageLinks", "thumbnail"]) {
         Some(url) => url.as_string().unwrap().to_string(),
         None => String::new()
     },
@@ -100,7 +112,7 @@ fn fetch_isbn(isbn: &str) -> Option<alexandria::Book> {
 }
 
 //Is book from the postgress
-fn book_from_row(row: postgres::PostgresRow) -> alexandria::Book {
+fn book_from_row(row: postgres::Row) -> alexandria::Book {
     alexandria::Book {
         name: row.get("name"),								//name of book
         description: row.get("description"),  //description of book
@@ -114,7 +126,7 @@ fn book_from_row(row: postgres::PostgresRow) -> alexandria::Book {
 }
 
 //Is student form postgress
-fn student_from_row(row: postgres::PostgresRow) -> alexandria::User {
+fn student_from_row(row: postgres::Row) -> alexandria::User {
 	alexandria::User{
 		name: row.get("name"),			//name of student
 		email: row.get("email"),		//email of student
@@ -124,7 +136,7 @@ fn student_from_row(row: postgres::PostgresRow) -> alexandria::User {
 }
 
 //Is history form postgress
-fn history_from_row(row: postgres::PostgresRow) -> alexandria::History {
+fn history_from_row(row: postgres::Row) -> alexandria::History {
     alexandria::History{
         isbn: row.get("isbn"),          //isbn of history
         student_id: row.get("student_id"),        //student_id of history
@@ -135,7 +147,7 @@ fn history_from_row(row: postgres::PostgresRow) -> alexandria::History {
 
 //list of books from request
 fn get_books(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let conn = conn.lock();
     let stmt = conn.prepare("SELECT * FROM books").unwrap();
     return Ok(good(&stmt.query([]).unwrap().map(|row| book_from_row(row)).collect::<Vec<_>>()))
@@ -143,8 +155,8 @@ fn get_books(req: &mut Request) -> IronResult<Response> {
 
 //a book from request
 fn get_book_by_isbn(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    Ok(match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
+    Ok(match req.extensions.get::<Router, Params>().unwrap().find("isbn") {
         Some(isbn) => {
             let conn = conn.lock();
             let stmt = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
@@ -153,22 +165,22 @@ fn get_book_by_isbn(req: &mut Request) -> IronResult<Response> {
                 return Ok(good(&book))
             }
 
-            Response::status(status::NotFound)
+            stat(status::NotFound)
         },
-        None => Response::status(status::BadRequest)
+        None => stat(status::BadRequest)
     })
 }
 
 //update book from request
 fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let isbn;
     {
-        match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+        match req.extensions.get::<Router, Params>().unwrap().find("isbn") {
             Some(isbn_) => {
                 isbn = isbn_.to_string();
             },
-            None => return Ok(Response::status(status::BadRequest))
+            None => return Ok(stat(status::BadRequest))
         }
     }
     let conn = conn.lock();
@@ -180,23 +192,23 @@ fn update_book_by_isbn(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Update Book! {}", num),
         Err(err) => println!("Error executing update_book_by_isbn: {}", err)
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 
 fn add_book(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let isbn;
     {
-        match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+        match req.extensions.get::<Router, Params>().unwrap().find("isbn") {
             Some(isbn_) => {
                 isbn = isbn_.to_string();
             },
-            None => return Ok(Response::status(status::BadRequest))
+            None => return Ok(stat(status::BadRequest))
         }
     }
 
     if verify_isbn(isbn.as_slice()) == false {
-        return Ok(Response::status(status::BadRequest))
+        return Ok(stat(status::BadRequest))
     }
 
     let book = fetch_isbn(isbn.as_slice()).unwrap();
@@ -209,22 +221,22 @@ fn add_book(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Added Book! {}", num),
         Err(err) => {
             println!("Error executing add_book: {}", err);
-            return Ok(Response::status(status::InternalServerError));
+            return Ok(stat(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::Ok))
+    Ok(stat(status::Ok))
 }
 
 //delete book from request
 fn delete_book_by_isbn(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let isbn;
     {
-        match req.extensions.find::<Router, Params>().unwrap().find("isbn") {
+        match req.extensions.get::<Router, Params>().unwrap().find("isbn") {
             Some(isbn_) => {
                 isbn = isbn_.to_string();
             },
-            None => return Ok(Response::status(status::BadRequest))
+            None => return Ok(stat(status::BadRequest))
         }
     }
     let conn = conn.lock();
@@ -233,15 +245,15 @@ fn delete_book_by_isbn(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Deleted Book! {}", num),
         Err(err) => {
             println!("Error executing delete_book_by_isbn: {}", err);
-            return Ok(Response::status(status::InternalServerError));
+            return Ok(stat(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 
 //list of students from request
 fn get_students(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let conn = conn.lock();
     let stmt = conn.prepare("SELECT * FROM users").unwrap();
     let mut users = Vec::new();
@@ -254,8 +266,8 @@ fn get_students(req: &mut Request) -> IronResult<Response> {
 
 //students from request
 fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
-    Ok(match req.extensions.find::<Router, Params>().unwrap().find("user"){
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
+    Ok(match req.extensions.get::<Router, Params>().unwrap().find("user"){
         Some(user) => {
             let conn = conn.lock();
             let stmt = conn.prepare("SELECT * FROM users WHERE student_id=$1").unwrap();
@@ -264,22 +276,22 @@ fn get_student_by_name(req: &mut Request) -> IronResult<Response> {
                 return Ok(good(&student))
             }
 
-            Response::status(status::NotFound)
+            stat(status::NotFound)
         },
-        None => Response::status(status::BadRequest)
+        None => stat(status::BadRequest)
     })
 }
 
 //update student from request
 fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let student_id;
     {
-        match req.extensions.find::<Router, Params>().unwrap().find("id") {
+        match req.extensions.get::<Router, Params>().unwrap().find("id") {
             Some(student_id_) => {
                 student_id = student_id_.to_string();
             },
-            None => return Ok(Response::status(status::BadRequest))
+            None => return Ok(stat(status::BadRequest))
         }
     }
     let conn = conn.lock();
@@ -289,15 +301,15 @@ fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Update Student! {}", num),
         Err(err) => {
             println!("Error executing update_student_by_name: {}", err);
-            return Ok(Response::status(status::InternalServerError));
+            return Ok(stat(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 
 //add student from request
 fn add_student(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let conn = conn.lock();
     // TODO: Handle user already exists!
     let stmt = conn.prepare("INSERT INTO users (name,email,student_id,permission) VALUES ($1,$2,$3,$4)").unwrap();
@@ -306,21 +318,21 @@ fn add_student(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Added Student! {}", num),
         Err(err) => {
             println!("Error executing add_student: {}", err);
-            return Ok(Response::status(status::InternalServerError));
+            return Ok(stat(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 
 //delete student from request
 fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let student_id;
-    match req.extensions.find::<Router, Params>().unwrap().find("id") {
+    match req.extensions.get::<Router, Params>().unwrap().find("id") {
         Some(student_id_) => {
             student_id = student_id_.to_string();
         },
-        None => return Ok(Response::status(status::BadRequest))
+        None => return Ok(stat(status::BadRequest))
     }
     let conn = conn.lock();
     let stmt = conn.prepare("DELETE from users WHERE student_id=$1").unwrap();
@@ -328,15 +340,15 @@ fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Deleted Student! {}", num),
         Err(err) => {
             println!("Error executing delete_student_by_name: {}", err);
-            return Ok(Response::status(status::InternalServerError));
+            return Ok(stat(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 
 //get checkoutstatus of a book
 fn checkout(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let parsed = req.get::<BodyParser<alexandria::ActionRequest>>().unwrap();
     let action;
     let conn = conn.lock();
@@ -352,18 +364,18 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
                     Ok(num) => println!("Update Checkout! {}", num),
                     Err(err) => {
                         println!("Error executing checkout: {}", err);
-                        return Ok(Response::status(status::InternalServerError));
+                        return Ok(stat(status::InternalServerError));
                     }
                 }
             }
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 
 //get checkinstatus of a book
 fn checkin(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let parsed = req.get::<BodyParser<alexandria::ActionRequest>>().unwrap();
     let action;
     let conn = conn.lock();
@@ -379,25 +391,25 @@ fn checkin(req: &mut Request) -> IronResult<Response> {
                     Ok(num) => println!("Update Checkout! {}", num),
                     Err(err) => {
                         println!("Error executing checkout: {}", err);
-                        return Ok(Response::status(status::InternalServerError));
+                        return Ok(stat(status::InternalServerError));
                     }
                 }
             }
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 /*
 
 //history
 fn history(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, PostgresConnection>>().unwrap();
+    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let student_id;
-    match req.extensions.find::<Router, Params>().unwrap().find("id") {
+    match req.extensions.get::<Router, Params>().unwrap().find("id") {
         Some(student_id_) => {
             student_id = student_id_.to_string();
         },
-        None => return Ok(Response::status(status::BadRequest))
+        None => return Ok(stat(status::BadRequest))
     }
     let conn = conn.lock();
     let stmt = conn.prepare("DELETE from users WHERE student_id=$1").unwrap();
@@ -405,10 +417,10 @@ fn history(req: &mut Request) -> IronResult<Response> {
         Ok(num) => println!("Deleted Student! {}", num),
         Err(err) => {
             println!("Error executing delete_student_by_name: {}", err);
-            return Ok(Response::status(status::InternalServerError));
+            return Ok(stat(status::InternalServerError));
         }
     }
-    Ok(Response::status(status::NotFound))
+    Ok(stat(status::NotFound))
 }
 */
 fn main() {
@@ -428,7 +440,7 @@ fn main() {
 	//make sure params is correct
 	//into_connect_params(params);
 	//connection function
-  let conn = PostgresConnection::connect("postgres://alexandria@localhost", &NoSsl).unwrap();
+  let conn = Connection::connect("postgres://alexandria@localhost", &NoSsl).unwrap();
 
   let mut router = Router::new();
 
@@ -477,7 +489,7 @@ fn main() {
 
   let (logger_before, logger_after) = Logger::new(None);
   chain.link_before(logger_before);
-  chain.link_before(Write::<DBConn, PostgresConnection>::one(conn));
+  chain.link_before(Write::<DBConn, Connection>::one(conn));
 
   // this must be last
   chain.link_after(logger_after);
