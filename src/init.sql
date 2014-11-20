@@ -15,15 +15,15 @@ CREATE TABLE books (
 DROP TABLE IF EXISTS history CASCADE;
 CREATE TABLE history (
     id SERIAL PRIMARY KEY,
-    username VARCHAR NOT NULL,
-    date TIMESTAMP,
-    action SMALLINT
+    user INTEGER REFERENCES users(id),
+    date TIMESTAMP
 );
 
 DROP TABLE IF EXISTS users CASCADE;
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR NOT NULL,
+    username VARCHAR NOT NULL,
     student_id VARCHAR NOT NULL,
     permission SMALLINT NOT NULL
 );
