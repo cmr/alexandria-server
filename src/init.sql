@@ -14,7 +14,7 @@ CREATE TABLE books (
 DROP TABLE IF EXISTS history CASCADE;
 CREATE TABLE history (
     id SERIAL PRIMARY KEY,
-    book INTEGER REFERENCES books (id),
+    username VARCHAR NOT NULL,
     date TIMESTAMP,
     action SMALLINT
 );
