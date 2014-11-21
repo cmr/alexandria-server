@@ -19,7 +19,7 @@ use serialize::json;
 
 use iron::{ChainBuilder, Chain, Iron, status, Request, Response, IronResult, Plugin, Set, typemap};
 use persistent::{Write};
-use postgres::{Connection, NoSsl};
+use postgres::{Connection, SslMode};
 use router::{Router, Params};
 use bodyparser::BodyParser;
 use logger::Logger;
@@ -138,7 +138,10 @@ fn student_from_row(row: postgres::Row) -> alexandria::User {
 //Is history form postgress
 fn history_from_row(row: postgres::Row) -> alexandria::History {
     alexandria::History{
-        isbn: row.get("isbn"),          //isbn of history
+        isbn: row.get("isbn"),
+        book: row.get("book"),
+        available: row.get("available"),
+        quantity: row.get("quantity"),
         student_id: row.get("student_id"),        //student_id of history
         date: row.get("date"),  //date of history
         action: alexandria::enum_from_id(row.get("action")).unwrap() //checkstatus
@@ -150,7 +153,7 @@ fn get_books(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let conn = conn.lock();
     let stmt = conn.prepare("SELECT * FROM books").unwrap();
-    return Ok(good(&stmt.query([]).unwrap().map(|row| book_from_row(row)).collect::<Vec<_>>()))
+    return Ok(good(&stmt.query(&[]).unwrap().map(|row| book_from_row(row)).collect::<Vec<_>>()))
 }
 
 //a book from request
@@ -257,7 +260,7 @@ fn get_students(req: &mut Request) -> IronResult<Response> {
     let conn = conn.lock();
     let stmt = conn.prepare("SELECT * FROM users").unwrap();
     let mut users = Vec::new();
-    for row in stmt.query([]).unwrap() {
+    for row in stmt.query(&[]).unwrap() {
         users.push(student_from_row(row));
     }
 
@@ -350,25 +353,33 @@ fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
 fn checkout(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let parsed = req.get::<BodyParser<alexandria::ActionRequest>>().unwrap();
-    let action;
+    let mut book_history = Vec::new();
     let conn = conn.lock();
-    let stmt1 = conn.prepare("SELECT * FROM history WHERE isbn=$1 AND student_id=$2 AND action=$3 ORDER BY date DESC").unwrap();
-    action = history_from_row(stmt1.query(&[&parsed.isbn,&parsed.student_id,&(parsed.action as i16)]).unwrap().next().unwrap());
-    if (parsed.isbn == action.isbn) && ((parsed.action as i16) == (action.action as i16)) && (parsed.student_id == action.student_id) {
-        let stmt2 = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
-        for row in stmt2.query(&[&parsed.isbn]).unwrap() {
-            let book = book_from_row(row);
-            if (book.available > 0) && (book.quantity >= book.available) && (book.isbn == parsed.isbn) {
-                let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
-                match stmt3.execute(&[&(book.available-1)]) {
-                    Ok(num) => println!("Update Checkout! {}", num),
-                    Err(err) => {
-                        println!("Error executing checkout: {}", err);
-                        return Ok(stat(status::InternalServerError));
-                    }
-                }
+    let stmt1 = conn.prepare("SELECT isbn, quantity, student_id, available FROM books INNER JOIN history ON books.isdn = history.isbn WHERE books.isbn=$1").unwrap();
+    for row in stmt1.query(&[&parsed.isbn]).unwrap(){
+        book_history.push(history_from_row(row));
+
+    }
+    if book_history[0].available <= book_history[0].quantity {
+        println!("NO Books Available");
+        return Ok(Response::status(status::InternalServerError));
+    }else{
+        let stmt2 = conn.prepare("INSERT INTO history (student_id,book,date,action) VALUES ($1,$2,$3,$4)").unwrap();
+        match stmt2.execute(&[&parsed.student_id,&parsed.isbn,&time::get_time(),&(parsed.action as i16)]){
+            Ok(num) => println!("Insert Into History! {}", num),
+            Err(err) => {
+                println!("Error executing checkin Insert Into: {}", err);
+                return Ok(stat(status::InternalServerError));
             }
-        }
+        };
+        let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
+        match stmt3.execute(&[&(book_history[0].available-1)]){
+            Ok(num) => println!("Update History! {}", num),
+            Err(err) => {
+                println!("Error executing checkin update: {}", err);
+                return Ok(stat(status::InternalServerError));
+            }
+        };
     }
     Ok(stat(status::NotFound))
 }
@@ -377,70 +388,40 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
 fn checkin(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let parsed = req.get::<BodyParser<alexandria::ActionRequest>>().unwrap();
-    let action;
     let conn = conn.lock();
-    let stmt1 = conn.prepare("SELECT * FROM history WHERE isbn=$1 AND student_id=$2 AND action=$3 ORDER BY date DESC").unwrap();
-    action = history_from_row(stmt1.query(&[&parsed.isbn,&parsed.student_id,&(parsed.action as i16)]).unwrap().next().unwrap());
-    if (parsed.isbn == action.isbn) && ((parsed.action as i16) == (action.action as i16)) && (parsed.student_id == action.student_id) {
-        let stmt2 = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
-        for row in stmt2.query(&[&parsed.isbn]).unwrap() {
-            let book = book_from_row(row);
-            if (book.available >= 0) && (book.quantity > book.available) && (book.isbn == parsed.isbn) {
-                let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
-                match stmt3.execute(&[&(book.available-1)]) {
-                    Ok(num) => println!("Update Checkout! {}", num),
-                    Err(err) => {
-                        println!("Error executing checkout: {}", err);
-                        return Ok(stat(status::InternalServerError));
-                    }
-                }
+    let mut book_history = Vec::new();
+    let stmt1 = conn.prepare("SELECT isbn, quantity, student_id, available FROM books INNER JOIN history ON books.isbn = history.isbn WHERE books.isbn=$1").unwrap();
+    for row in stmt1.query(&[&parsed.isbn]).unwrap(){
+        book_history.push(history_from_row(row));
+    }
+    if book_history.len() <= 0 {
+        println!("NO Books to Checkin");
+        return Ok(Response::status(status::InternalServerError));
+    }else{
+        let stmt2 = conn.prepare("DELETE from history WHERE student_id=$1 AND isbn=$2").unwrap();
+        match stmt2.execute(&[&parsed.student_id,&parsed.isbn]){
+            Ok(num) => println!("Deleted History! {}", num),
+            Err(err) => {
+                println!("Error executing checkin delete: {}", err);
+                return Ok(stat(status::InternalServerError));
             }
-        }
+        };
+        let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
+        match stmt3.execute(&[&(book_history[0].available+1)]){
+            Ok(num) => println!("Update History! {}", num),
+            Err(err) => {
+                println!("Error executing checkin update: {}", err);
+                return Ok(stat(status::InternalServerError));
+            }
+        };
     }
     Ok(stat(status::NotFound))
 }
-/*
 
-//history
-fn history(req: &mut Request) -> IronResult<Response> {
-    let conn = req.get::<Write<DBConn, Connection>>().unwrap();
-    let student_id;
-    match req.extensions.get::<Router, Params>().unwrap().find("id") {
-        Some(student_id_) => {
-            student_id = student_id_.to_string();
-        },
-        None => return Ok(stat(status::BadRequest))
-    }
-    let conn = conn.lock();
-    let stmt = conn.prepare("DELETE from users WHERE student_id=$1").unwrap();
-    match stmt.execute(&[&student_id]) {
-        Ok(num) => println!("Deleted Student! {}", num),
-        Err(err) => {
-            println!("Error executing delete_student_by_name: {}", err);
-            return Ok(stat(status::InternalServerError));
-        }
-    }
-    Ok(stat(status::NotFound))
-}
-*/
 fn main() {
-	/*
-	//parameters for connection to database
-	let params = PostgresConnectParams {
-  	target: TargetUnix(some_crazy_path),//target server
-  	port: None,													//target port
-  	user: Some(PostgresUserInfo {				//user to login as
-    	user: "postgres".to_string(),
-    	password: None
-  	}),
-  	database: None,											//database to connect to
-  	options: vec![],										//runtime parameters
-	};*/
-
-	//make sure params is correct
-	//into_connect_params(params);
+	
 	//connection function
-  let conn = Connection::connect("postgres://alexandria@localhost", &NoSsl).unwrap();
+  let conn = Connection::connect("postgres://alexandria@localhost", &SslMode::None).unwrap();
 
   let mut router = Router::new();
 
@@ -474,9 +455,6 @@ fn main() {
   router.post("/checkout", checkout);
   //checkin
   router.post("/checkin", checkin);
-
-  //history
-  //router.get("/history", history);
 
   //manages the request through IRON Middleware web framework
 

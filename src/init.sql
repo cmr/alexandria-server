@@ -9,14 +9,17 @@ CREATE TABLE books (
     quantity SMALLINT NOT NULL,
     active_date TIMESTAMP NOT NULL,
     permission SMALLINT NOT NULL,
-    book_history INTEGER REFERENCES history(id)
 );
 
 DROP TABLE IF EXISTS history CASCADE;
 CREATE TABLE history (
     id SERIAL PRIMARY KEY,
-    user INTEGER REFERENCES users(id),
-    date TIMESTAMP
+    student_id VARCHAR NOT NULL,
+    quantity SMALLINT NOT NULL,
+    available SMALLINT NOT NULL,
+    book INTEGER REFERENCES books (id),
+    date TIMESTAMP,
+    action SMALLINT
 );
 
 DROP TABLE IF EXISTS users CASCADE;

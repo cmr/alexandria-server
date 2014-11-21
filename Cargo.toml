@@ -9,9 +9,9 @@ git = "https://github.com/sfackler/rust-postgres"
 [dependencies.alexandria]
 git = "https://github.com/cmr/alexandria-common"
 [dependencies.iron]
-git = "https://github.com/iron/iron.git"
+git = "https://github.com/cmr/iron.git"
 [dependencies.logger]
-git = "https://github.com/iron/logger.git"
+git = "https://github.com/cmr/logger.git"
 [dependencies.router]
 git = "https://github.com/iron/router.git"
 [dependencies.persistent]
