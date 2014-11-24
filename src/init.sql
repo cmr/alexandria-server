@@ -8,7 +8,7 @@ CREATE TABLE books (
     available SMALLINT NOT NULL,
     quantity SMALLINT NOT NULL,
     active_date TIMESTAMP NOT NULL,
-    permission SMALLINT NOT NULL,
+    permission SMALLINT NOT NULL
 );
 
 DROP TABLE IF EXISTS history CASCADE;
