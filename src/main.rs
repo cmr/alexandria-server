@@ -384,6 +384,10 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
     Ok(stat(status::NotFound))
 }
 
+fn ignore_auth(req: &mut Request) -> IronResult<Response> {
+    Ok(stat(status::Ok))
+}
+
 //get checkinstatus of a book
 fn checkin(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, Connection>>().unwrap();
@@ -419,14 +423,15 @@ fn checkin(req: &mut Request) -> IronResult<Response> {
 }
 
 fn main() {
-	
-	//connection function
+
+  //connection function
   let conn = Connection::connect("postgres://alexandria@localhost", &SslMode::None).unwrap();
 
   let mut router = Router::new();
 
   // TODO: paginate all of these
 
+  router.get("/auth", ignore_auth);
   //get list of books
   router.get("/book", get_books);
   //get book from the isbn
@@ -460,7 +465,7 @@ fn main() {
 
   let mut mount = Mount::new();
   mount.mount("/", Static::new(Path::new("../alexandria-web-client/jquery/index.html")));
-  mount.mount("/api", router);
+  mount.mount("/api/v1", router);
   mount.mount("/static/", Static::new(Path::new("../alexandria-web-client/jquery/static/")));
 
   let mut chain = ChainBuilder::new(mount);
