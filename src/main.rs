@@ -373,7 +373,7 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
             }
         };
         let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
-        match stmt3.execute(&[&(book_history[0].available-1)]){
+        match stmt3.execute(&[&(book_history[0].available-1,&parsed.isbn)]){
             Ok(num) => println!("Update History! {}", num),
             Err(err) => {
                 println!("Error executing checkin update: {}", err);
@@ -411,7 +411,7 @@ fn checkin(req: &mut Request) -> IronResult<Response> {
             }
         };
         let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
-        match stmt3.execute(&[&(book_history[0].available+1)]){
+        match stmt3.execute(&[&(book_history[0].available+1,&parsed.isbn)]){
             Ok(num) => println!("Update History! {}", num),
             Err(err) => {
                 println!("Error executing checkin update: {}", err);
