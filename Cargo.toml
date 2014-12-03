@@ -4,29 +4,18 @@ name = "alexandria-server"
 version = "0.0.1"
 authors = ["Corey Richardson <corey@octayn.net>"]
 
-[dependencies.postgres]
-git = "https://github.com/sfackler/rust-postgres"
+[dependencies]
+iron = "*"
+logger = "*"
+router = "*"
+persistent = "*"
+static = "*"
+mount = "*"
+bodyparser = "*"
+hyper = "*"
+url = "*"
+lazy_static = "*"
+postgres = "*"
+
 [dependencies.alexandria]
 git = "https://github.com/cmr/alexandria-common"
-[dependencies.iron]
-git = "https://github.com/cmr/iron.git"
-[dependencies.logger]
-git = "https://github.com/cmr/logger.git"
-[dependencies.router]
-git = "https://github.com/iron/router.git"
-[dependencies.persistent]
-git = "https://github.com/iron/persistent.git"
-[dependencies.mount]
-git = "https://github.com/iron/mount.git"
-[dependencies.static]
-git = "https://github.com/iron/static.git"
-[dependencies.bodyparser]
-git = "https://github.com/iron/body-parser.git"
-
-[dependencies.hyper]
-git = "https://github.com/hyperium/hyper"
-[dependencies.url]
-git = "https://github.com/servo/rust-url"
-
-[dependencies.lazy_static]
-git = "https://github.com/Kimundi/lazy-static.rs"
