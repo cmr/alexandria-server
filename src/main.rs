@@ -157,12 +157,12 @@ fn get_books(req: &mut Request) -> IronResult<Response> {
 }
 
 //a book from request
-fn get_book_by_isbn(req: &mut Request) -> IronResult<Response> {
+fn get_book_by_search(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     Ok(match req.extensions.get::<Router, Params>().unwrap().find("isbn") {
         Some(isbn) => {
             let conn = conn.lock();
-            let stmt = conn.prepare("SELECT * FROM books WHERE isbn=$1").unwrap();
+            let stmt = conn.prepare("SELECT * FROM books WHERE isbn=$1 OR name=$1").unwrap();
             for row in stmt.query(&[&String::from_str(isbn)]).unwrap() {
                 let book = book_from_row(row);
                 return Ok(good(&book))
@@ -435,7 +435,7 @@ fn main() {
   //get list of books
   router.get("/book", get_books);
   //get book from the isbn
-  router.get("/book/:isbn", get_book_by_isbn);
+  router.get("/book/:isbn", get_book_by_search);
   //update book from isbn
   router.post("/book/:isbn", update_book_by_isbn);
   //add book from isbn
