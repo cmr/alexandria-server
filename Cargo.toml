@@ -9,13 +9,19 @@ iron = "*"
 logger = "*"
 router = "*"
 persistent = "*"
-static = "*"
-mount = "*"
-bodyparser = "*"
 hyper = "*"
 url = "*"
 lazy_static = "*"
 postgres = "*"
+
+[dependencies.bodyparser]
+git = "https://github.com/iron/body-parser"
+
+[dependencies.mount]
+git = "https://github.com/iron/mount"
+
+[dependencies.static]
+git = "https://github.com/iron/static"
 
 [dependencies.alexandria]
 git = "https://github.com/cmr/alexandria-common"
