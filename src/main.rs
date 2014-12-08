@@ -17,7 +17,7 @@ extern crate "static" as static_file;
 use std::io::net::ip::Ipv4Addr;
 use serialize::json;
 
-use iron::{ChainBuilder, Chain, Iron, status, Request, Response, IronResult, Plugin, Set, typemap};
+use iron::{ChainBuilder, Chain, Iron, status, Request, Response, IronResult, Plugin, typemap};
 use persistent::{Write};
 use postgres::{Connection, SslMode};
 use router::{Router, Params};
@@ -42,12 +42,14 @@ struct APIResult<T> {
 }
 
 fn resp<B: iron::response::modifiers::Bodyable>(st: iron::status::Status, b: B) -> Response {
+    use iron::Set;
     Response::new()
         .set(iron::response::modifiers::Status(st))
         .set(iron::response::modifiers::Body(b))
 }
 
 fn stat(st: iron::status::Status) -> Response {
+    use iron::Set;
     Response::new()
         .set(iron::response::modifiers::Status(st))
 }
@@ -55,12 +57,11 @@ fn stat(st: iron::status::Status) -> Response {
 
 //get the json form a good request
 fn good<'a, T: serialize::Encodable<json::Encoder<'a>, std::io::IoError>>(val: &T) -> Response {
-    use iron::headers::content_type::MediaType;
+    use hyper::header::ContentType;
 
     let json = json::encode(&APIResult { success: true, data: val });
     let mut res = resp(status::Ok, json);
-    res.headers.content_type =
-        Some(MediaType::new("application".to_string(), "json".to_string(), Vec::new()));
+    res.headers.set(ContentType(from_str("application/json").unwrap()));
     res
 }
 
@@ -93,7 +94,7 @@ fn fetch_isbn(isbn: &str) -> Option<alexandria::Book> {
     } else if avail > 1 {
         println!("Google API returned multiple items for a single ISBN {}? Please report a bug!", isbn);
     }
-    let item = &resp.find("items").expect("no items").as_list().expect("items not a list")[0];
+    let item = &resp.find("items").expect("no items").as_array().expect("items not an array")[0];
     // time to pull out all the data we care about
 
     Some(alexandria::Book {
@@ -107,7 +108,7 @@ fn fetch_isbn(isbn: &str) -> Option<alexandria::Book> {
     available: 0,
     quantity: 0,
     active_date: time::Timespec::new(0, 0),
-    permission: alexandria::DontLeaveLibrary
+    permission: alexandria::Permission::DontLeaveLibrary
     })
 }
 
@@ -362,7 +363,7 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
     }
     if book_history[0].available <= book_history[0].quantity {
         println!("NO Books Available");
-        return Ok(Response::status(status::InternalServerError));
+        return Ok(stat(status::InternalServerError));
     }else{
         let stmt2 = conn.prepare("INSERT INTO history (student_id,book,date,action) VALUES ($1,$2,$3,$4)").unwrap();
         match stmt2.execute(&[&parsed.student_id,&parsed.isbn,&time::get_time(),&(parsed.action as i16)]){
@@ -373,7 +374,7 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
             }
         };
         let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
-        match stmt3.execute(&[&(book_history[0].available-1,&parsed.isbn)]){
+        match stmt3.execute(&[&(book_history[0].available - 1), &parsed.isbn]){
             Ok(num) => println!("Update History! {}", num),
             Err(err) => {
                 println!("Error executing checkin update: {}", err);
@@ -384,7 +385,7 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
     Ok(stat(status::NotFound))
 }
 
-fn ignore_auth(req: &mut Request) -> IronResult<Response> {
+fn ignore_auth(_: &mut Request) -> IronResult<Response> {
     Ok(stat(status::Ok))
 }
 
@@ -400,7 +401,7 @@ fn checkin(req: &mut Request) -> IronResult<Response> {
     }
     if book_history.len() <= 0 {
         println!("NO Books to Checkin");
-        return Ok(Response::status(status::InternalServerError));
+        return Ok(stat(status::InternalServerError));
     }else{
         let stmt2 = conn.prepare("DELETE from history WHERE student_id=$1 AND isbn=$2").unwrap();
         match stmt2.execute(&[&parsed.student_id,&parsed.isbn]){
@@ -411,7 +412,7 @@ fn checkin(req: &mut Request) -> IronResult<Response> {
             }
         };
         let stmt3 = conn.prepare("UPDATE books SET available=$1 WHERE isbn=$2").unwrap();
-        match stmt3.execute(&[&(book_history[0].available+1,&parsed.isbn)]){
+        match stmt3.execute(&[&(book_history[0].available + 1), &parsed.isbn]){
             Ok(num) => println!("Update History! {}", num),
             Err(err) => {
                 println!("Error executing checkin update: {}", err);
@@ -477,5 +478,5 @@ fn main() {
   // this must be last
   chain.link_after(logger_after);
   //kick off the server process
-  Iron::new(chain).listen(Ipv4Addr(0, 0, 0, 0), 13699);
+  Iron::new(chain).listen((Ipv4Addr(0, 0, 0, 0), 13699)).unwrap();
 }
