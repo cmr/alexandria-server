@@ -17,7 +17,7 @@ CREATE TABLE history (
     student_id VARCHAR NOT NULL,
     quantity SMALLINT NOT NULL,
     available SMALLINT NOT NULL,
-    book INTEGER REFERENCES books (id),
+    book INTEGER REFERENCES books (isbn),
     date TIMESTAMP,
     action SMALLINT
 );
