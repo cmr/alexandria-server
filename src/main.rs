@@ -138,6 +138,7 @@ fn student_from_row(row: postgres::Row) -> alexandria::User {
 		email: row.get("email"),		//email of student
 		student_id: row.get("id"),	//id of student
 		permission: alexandria::enum_from_id(row.get("permission")).unwrap() //permissions status
+		password: row.get("password").unwrap() //password of student
 	}
 }
 
@@ -304,9 +305,10 @@ fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
         }
     }
     let conn = conn.lock();
-    let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,permission=$4 WHERE student_id=$1").unwrap();
+    let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,permission=$4,password=$5 WHERE student_id=$1").unwrap();
     let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
-    match stmt.execute(&[&student_id,&parsed.name,&parsed.email,&(parsed.permission as i16)]) {
+    let password = scrypt::scrypt_simple(&parsed.password, &SCRYPT_PARAMS);
+    match stmt.execute(&[&student_id,&parsed.name,&parsed.email,&(parsed.permission as i16),&password]) {
         Ok(num) => println!("Update Student! {}", num),
         Err(err) => {
             println!("Error executing update_student_by_name: {}", err);
@@ -320,16 +322,23 @@ fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
 fn add_student(req: &mut Request) -> IronResult<Response> {
     let conn = req.get::<Write<DBConn, Connection>>().unwrap();
     let conn = conn.lock();
-    // TODO: Handle user already exists!
-    let stmt = conn.prepare("INSERT INTO users (name,email,student_id,permission) VALUES ($1,$2,$3,$4)").unwrap();
     let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
-    match stmt.execute(&[&parsed.name,&parsed.email,&parsed.student_id,&(parsed.permission as i16)]) {
-        Ok(num) => println!("Added Student! {}", num),
-        Err(err) => {
-            println!("Error executing add_student: {}", err);
-            return Ok(stat(status::InternalServerError));
-        }
-    }
+    let stmt1 = conn.prepare("SELECT student_id FROM users WHERE student_id=$1").unwrap();
+    let mut student = match stmt1.query(&[&parsed.student_id]).unwrap(){
+        Ok(student) => student = student_from_row(row),
+        Err(err) => err
+    };
+    if !student.is_err() {
+    	let stmt = conn.prepare("INSERT INTO users (name,email,student_id,permission,password) VALUES ($1,$2,$3,$4,$5)").unwrap();
+    	let password = scrypt::scrypt_simple(&parsed.password, &SCRYPT_PARAMS);
+    	match stmt.execute(&[&parsed.name,&parsed.email,&parsed.student_id,&(parsed.permission as i16),&password]) {
+        	Ok(num) => println!("Added Student! {}", num),
+        	Err(err) => {
+            	println!("Error executing add_student: {}", err);
+            	return Ok(stat(status::InternalServerError));
+        	}
+    	}
+	}
     Ok(stat(status::NotFound))
 }
 
@@ -351,6 +360,21 @@ fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
             println!("Error executing delete_student_by_name: {}", err);
             return Ok(stat(status::InternalServerError));
         }
+    }
+    Ok(stat(status::NotFound))
+}
+
+//check if user has permission
+fn auth(req: &mut Request) -> IronResult<Response> {
+	let conn = req.get::<Write<DBConn, Connection>>().unwrap();
+    let parsed = req.get_ref::<UrlEncodedBody>();
+    let stmt = conn.prepare("SELECT student_id from users WHERE student_id=$1").unwrap();
+    let mut auth = match stmt1.query(&[&parsed.user]).unwrap(){
+        Ok(auth) => auth=student_from_row(row),
+        Err(err) => Ok(stat(status::BadRequest))
+    };
+    if scrypt::scrypt_check(parsed.pass, auth.password) != true {
+    	return Ok(stat(status::InternalServerError));
     }
     Ok(stat(status::NotFound))
 }
@@ -388,10 +412,6 @@ fn checkout(req: &mut Request) -> IronResult<Response> {
         };
     }
     Ok(stat(status::NotFound))
-}
-
-fn ignore_auth(_: &mut Request) -> IronResult<Response> {
-    Ok(stat(status::Ok))
 }
 
 //get checkinstatus of a book
@@ -437,7 +457,7 @@ fn main() {
 
   // TODO: paginate all of these
 
-  router.get("/auth", ignore_auth);
+  router.get("/auth", auth);
   //get list of books
   router.get("/book", get_books);
   //get book from the isbn

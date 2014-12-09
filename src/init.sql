@@ -28,5 +28,6 @@ CREATE TABLE users (
     email VARCHAR NOT NULL,
     username VARCHAR NOT NULL,
     student_id VARCHAR NOT NULL,
-    permission SMALLINT NOT NULL
+    permission SMALLINT NOT NULL,
+    password SMALLINT NOT NULL
 );
