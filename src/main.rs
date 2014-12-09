@@ -14,6 +14,7 @@ extern crate mount;
 extern crate "static" as static_file;
 extern crate "rust-crypto" as crypto;
 #[phase(plugin)] extern crate lazy_static;
+extern crate urlencoded;
 
 use std::io::net::ip::Ipv4Addr;
 use serialize::json;
@@ -27,12 +28,13 @@ use logger::Logger;
 use mount::Mount;
 use static_file::Static;
 use crypto::scrypt;
+use urlencoded::UrlEncodedQuery;
 
 lazy_static! {
     static ref APIKEY: String = {
         std::os::getenv("GOOGLE_APIKEY").expect("Invalid API key!")
     };
-    static ref SCRYPT_PARAM: scrypt::ScryptParams {
+    static ref SCRYPT_PARAM: scrypt::ScryptParams = {
         scrypt::ScryptParams::new(16, 8, 1)
     };
 }
@@ -137,8 +139,8 @@ fn student_from_row(row: postgres::Row) -> alexandria::User {
 		name: row.get("name"),			//name of student
 		email: row.get("email"),		//email of student
 		student_id: row.get("id"),	//id of student
-		permission: alexandria::enum_from_id(row.get("permission")).unwrap() //permissions status
-		password: row.get("password").unwrap() //password of student
+		permission: alexandria::enum_from_id(row.get("permission")).unwrap(), //permissions status
+		password: row.get("password") //password of student
 	}
 }
 
@@ -307,7 +309,7 @@ fn update_student_by_id(req: &mut Request) -> IronResult<Response> {
     let conn = conn.lock();
     let stmt = conn.prepare("UPDATE users SET name=$1,email=$2,permission=$4,password=$5 WHERE student_id=$1").unwrap();
     let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
-    let password = scrypt::scrypt_simple(&parsed.password, &SCRYPT_PARAMS);
+    let password = scrypt::scrypt_simple(parsed.password.as_slice(), SCRYPT_PARAM.deref()).unwrap();
     match stmt.execute(&[&student_id,&parsed.name,&parsed.email,&(parsed.permission as i16),&password]) {
         Ok(num) => println!("Update Student! {}", num),
         Err(err) => {
@@ -324,13 +326,16 @@ fn add_student(req: &mut Request) -> IronResult<Response> {
     let conn = conn.lock();
     let parsed = req.get::<BodyParser<alexandria::User>>().unwrap();
     let stmt1 = conn.prepare("SELECT student_id FROM users WHERE student_id=$1").unwrap();
-    let mut student = match stmt1.query(&[&parsed.student_id]).unwrap(){
-        Ok(student) => student = student_from_row(row),
-        Err(err) => err
+    let mut student = match stmt1.query(&[&parsed.student_id]) {
+        Ok(mut rows) => rows.next().map(|r| student_from_row(r)),
+        Err(err) => {
+            println!("Error executing add_student: {}", err);
+            return Ok(stat(status::InternalServerError));
+        }
     };
-    if !student.is_err() {
+    if !student.is_some() {
     	let stmt = conn.prepare("INSERT INTO users (name,email,student_id,permission,password) VALUES ($1,$2,$3,$4,$5)").unwrap();
-    	let password = scrypt::scrypt_simple(&parsed.password, &SCRYPT_PARAMS);
+    	let password = scrypt::scrypt_simple(parsed.password.as_slice(), SCRYPT_PARAM.deref()).unwrap();
     	match stmt.execute(&[&parsed.name,&parsed.email,&parsed.student_id,&(parsed.permission as i16),&password]) {
         	Ok(num) => println!("Added Student! {}", num),
         	Err(err) => {
@@ -367,16 +372,17 @@ fn delete_student_by_id(req: &mut Request) -> IronResult<Response> {
 //check if user has permission
 fn auth(req: &mut Request) -> IronResult<Response> {
 	let conn = req.get::<Write<DBConn, Connection>>().unwrap();
-    let parsed = req.get_ref::<UrlEncodedBody>();
+    let conn = conn.lock();
+    let parsed = req.get_ref::<UrlEncodedQuery>().unwrap();
     let stmt = conn.prepare("SELECT student_id from users WHERE student_id=$1").unwrap();
-    let mut auth = match stmt1.query(&[&parsed.user]).unwrap(){
-        Ok(auth) => auth=student_from_row(row),
-        Err(err) => Ok(stat(status::BadRequest))
+    let mut auth = match stmt.query(&[&parsed.get(&"user".into_string()).unwrap()[0]]) {
+        Ok(mut rows) => student_from_row(rows.next().unwrap()),
+        Err(err) => return Ok(stat(status::BadRequest))
     };
-    if scrypt::scrypt_check(parsed.pass, auth.password) != true {
-    	return Ok(stat(status::InternalServerError));
+    if !scrypt::scrypt_check(parsed.get(&"pass".into_string()).unwrap()[0].as_slice(), auth.password.as_slice()).unwrap() {
+    	return Ok(stat(status::Unauthorized));
     }
-    Ok(stat(status::NotFound))
+    Ok(stat(status::Ok))
 }
 
 //get checkoutstatus of a book

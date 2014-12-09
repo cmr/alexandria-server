@@ -21,3 +21,6 @@ rust-crypto = "*"
 
 [dependencies.alexandria]
 git = "https://github.com/cmr/alexandria-common"
+
+[dependencies.urlencoded]
+git = "https://github.com/iron/urlencoded"
