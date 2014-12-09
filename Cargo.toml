@@ -14,7 +14,6 @@ url = "*"
 lazy_static = "*"
 postgres = "*"
 mount = "*"
-static = "*"
 bodyparser = "*"
 time = "*"
 rust-crypto = "*"
@@ -24,3 +23,6 @@ git = "https://github.com/cmr/alexandria-common"
 
 [dependencies.urlencoded]
 git = "https://github.com/iron/urlencoded"
+
+[dependencies.static]
+git = "https://github.com/cmr/static"
