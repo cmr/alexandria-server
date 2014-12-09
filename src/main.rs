@@ -12,6 +12,7 @@ extern crate url;
 extern crate time;
 extern crate mount;
 extern crate "static" as static_file;
+extern crate "rust-crypto" as crypto;
 #[phase(plugin)] extern crate lazy_static;
 
 use std::io::net::ip::Ipv4Addr;
@@ -25,10 +26,14 @@ use bodyparser::BodyParser;
 use logger::Logger;
 use mount::Mount;
 use static_file::Static;
+use crypto::scrypt;
 
 lazy_static! {
     static ref APIKEY: String = {
         std::os::getenv("GOOGLE_APIKEY").expect("Invalid API key!")
+    };
+    static ref SCRYPT_PARAM: scrypt::ScryptParams {
+        scrypt::ScryptParams::new(16, 8, 1)
     };
 }
 

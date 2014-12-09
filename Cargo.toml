@@ -17,6 +17,7 @@ mount = "*"
 static = "*"
 bodyparser = "*"
 time = "*"
+rust-crypto = "*"
 
 [dependencies.alexandria]
 git = "https://github.com/cmr/alexandria-common"
