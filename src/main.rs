@@ -223,7 +223,10 @@ fn add_book(req: &mut Request) -> IronResult<Response> {
         return Ok(stat(status::BadRequest))
     }
 
-    let book = fetch_isbn(isbn.as_slice()).unwrap();
+    let book = match fetch_isbn(isbn.as_slice()) {
+        Some(b) => b,
+        None => return Ok(stat(status::NotFound))
+    };
     let conn = conn.lock();
     let stmt = conn.prepare("INSERT INTO books (name,description,isbn,cover_image,available,quantity,active_date,permission) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)").unwrap();
     let parsed = book;
@@ -376,7 +379,10 @@ fn auth(req: &mut Request) -> IronResult<Response> {
     let parsed = req.get_ref::<UrlEncodedQuery>().unwrap();
     let stmt = conn.prepare("SELECT student_id from users WHERE student_id=$1").unwrap();
     let mut auth = match stmt.query(&[&parsed.get(&"user".into_string()).unwrap()[0]]) {
-        Ok(mut rows) => student_from_row(rows.next().unwrap()),
+        Ok(mut rows) => student_from_row(match rows.next() {
+            Some(r) => r,
+            None => return Ok(stat(status::Unauthorized))
+        }),
         Err(err) => return Ok(stat(status::BadRequest))
     };
     if !scrypt::scrypt_check(parsed.get(&"pass".into_string()).unwrap()[0].as_slice(), auth.password.as_slice()).unwrap() {
