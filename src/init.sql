@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS history CASCADE;
 CREATE TABLE history (
     id SERIAL PRIMARY KEY,
     student_id VARCHAR NOT NULL,
+    isbn VARCHAR NOT NULL,
     quantity SMALLINT NOT NULL,
     available SMALLINT NOT NULL,
     book INTEGER REFERENCES books (id),
