@@ -30,6 +30,10 @@ use static_file::Static;
 use crypto::scrypt;
 use urlencoded::UrlEncodedQuery;
 
+fn decode(s: &str) -> String {
+    url::percent_encoding::lossy_utf8_percent_decode(s.as_bytes())
+}
+
 lazy_static! {
     static ref APIKEY: String = {
         std::os::getenv("GOOGLE_APIKEY").expect("Invalid API key!")
@@ -172,7 +176,7 @@ fn get_book_by_search(req: &mut Request) -> IronResult<Response> {
         Some(isbn) => {
             let conn = conn.lock();
             let stmt = conn.prepare("SELECT * FROM books WHERE isbn=$1 OR name=$1").unwrap();
-            for row in stmt.query(&[&String::from_str(isbn)]).unwrap() {
+            for row in stmt.query(&[&String::from_str(decode(isbn).as_slice())]).unwrap() {
                 let book = book_from_row(row);
                 return Ok(good(&book))
             }
